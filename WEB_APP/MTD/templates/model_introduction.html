@@ -1,0 +1,103 @@
+<!-- model_introduction.html -->
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}模型介绍中心{% endblock %}
+
+{% block extra_styles %}
+<!-- 引入粒子动画样式 -->
+<link rel="stylesheet" href="{% static 'css/particles.css' %}">
+<style>
+body {
+    overflow: hidden;
+    margin: 0;
+}
+
+#particles-js {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: -1;
+}
+
+.container {
+    position: relative;
+    z-index: 1;
+    padding-top: 100px;
+}
+
+.card {
+    backdrop-filter: blur(10px);
+    background: rgba(255,255,255,0.9);
+    transition: transform 0.3s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="particles-js"></div>
+
+<div class="container mt-5">
+    <h1 class="text-center mb-5">模型介绍导航</h1>
+    <div class="row justify-content-center">
+        <!-- 恶意流量检测模型卡片 -->
+        <div class="col-md-5 mb-4">
+            <div class="card model-card h-100 shadow-lg">
+                <div class="card-body">
+                    <h2 class="card-title text-primary">
+                        <i data-feather="shield" class="me-2"></i>恶意流量检测模型
+                    </h2>
+                    <p class="card-text">
+                        基于深度学习的网络入侵检测系统<br>
+                        支持流量分析与威胁识别
+                    </p>
+                    <a href="{% url 'malicious_model_introduction' %}"
+                       class="btn btn-primary d-block mt-3">
+                        <i class="bi-arrow-right-circle"></i> 详细说明
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 数据增强模型卡片 -->
+        <div class="col-md-5 mb-4">
+            <div class="card model-card h-100 shadow-lg">
+                <div class="card-body">
+                    <h2 class="card-title text-success">
+                        <i data-feather="database" class="me-2"></i>数据增强模型
+                    </h2>
+                    <p class="card-text">
+                        基于Improved-Diffusion的智能数据扩增技术<br>
+                        解决小样本数据训练难题
+                    </p>
+                    <a href="{% url 'data_augmentation_introduction' %}"
+                       class="btn btn-success d-block mt-3">
+                        <i class="bi-arrow-right-circle"></i> 详细说明
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<!-- 引入粒子动画脚本 -->
+<script src="{% static 'js/particles.min.js' %}"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    // 初始化Feather图标
+    feather.replace();
+
+    // 初始化粒子动画
+    particlesJS.load('particles-js', '{% static "json/particles.json" %}');
+});
+</script>
+{% endblock %}

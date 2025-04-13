@@ -1,0 +1,315 @@
+{#{% extends 'base.html' %}#}
+{% load static %}
+<head>
+<title>
+    {% block title %}用户注册{% endblock %}
+</title>
+</head>
+{% block extra_css %}
+<style>
+    body, html {
+        height: 100%;
+        margin: 0;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        overflow-x: hidden;
+    }
+
+    #particles-js {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        z-index: -1;
+    }
+
+    .register-container {
+        max-width: 400px;
+        margin: 80px auto;
+        padding: 30px;
+        background-color: rgba(255, 255, 255, 0.9);
+        border-radius: 10px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        position: relative;
+        z-index: 1;
+    }
+
+    .register-title {
+        text-align: center;
+        margin-bottom: 25px;
+        color: #333;
+        font-size: 28px;
+        font-weight: 600;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: #555;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-size: 15px;
+        box-sizing: border-box;
+        transition: all 0.3s;
+    }
+
+    .form-control:focus {
+        border-color: #764ba2;
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(118, 75, 162, 0.2);
+    }
+
+    .error-text {
+        color: #dc3545;
+        font-size: 13px;
+        margin-top: 5px;
+    }
+
+    .btn-register {
+        display: block;
+        width: 100%;
+        padding: 14px;
+        background: linear-gradient(to right, #667eea, #764ba2);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+        margin-top: 10px;
+    }
+
+    .btn-register:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
+    }
+
+    .login-link {
+        text-align: center;
+        margin-top: 20px;
+        font-size: 15px;
+    }
+
+    .login-link a {
+        color: #764ba2;
+        text-decoration: none;
+        font-weight: bold;
+    }
+
+    .login-link a:hover {
+        text-decoration: underline;
+    }
+
+    .alert {
+        padding: 12px;
+        margin-bottom: 20px;
+        border-radius: 6px;
+    }
+
+    .alert-danger {
+        background-color: #f8d7da;
+        border: 1px solid #f5c6cb;
+        color: #721c24;
+    }
+
+    .alert-success {
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+        color: #155724;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- 粒子效果背景 -->
+<div id="particles-js"></div>
+
+<div class="register-container">
+    <h2 class="register-title">快速注册</h2>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    {% if form.non_field_errors %}
+        <div class="alert alert-danger">
+            {% for error in form.non_field_errors %}
+                {{ error }}
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+
+        <!-- 用户名 -->
+        <div class="form-group">
+            <label for="id_username">用户名</label>
+            <input type="text" name="username" id="id_username" class="form-control" required
+                   value="{{ form.username.value|default:'' }}" maxlength="150">
+            {% if form.username.errors %}
+                <div class="error-text">{{ form.username.errors }}</div>
+            {% endif %}
+        </div>
+
+        <!-- 邮箱 -->
+        <div class="form-group">
+            <label for="id_email">电子邮件</label>
+            <input type="email" name="email" id="id_email" class="form-control" required
+                   value="{{ form.email.value|default:'' }}">
+            {% if form.email.errors %}
+                <div class="error-text">{{ form.email.errors }}</div>
+            {% endif %}
+        </div>
+
+        <!-- 密码 -->
+        <div class="form-group">
+            <label for="id_password1">密码</label>
+            <input type="password" name="password1" id="id_password1" class="form-control" required>
+            {% if form.password1.errors %}
+                <div class="error-text">{{ form.password1.errors }}</div>
+            {% endif %}
+        </div>
+
+        <!-- 确认密码 -->
+        <div class="form-group">
+            <label for="id_password2">确认密码</label>
+            <input type="password" name="password2" id="id_password2" class="form-control" required>
+            {% if form.password2.errors %}
+                <div class="error-text">{{ form.password2.errors }}</div>
+            {% endif %}
+        </div>
+
+        <button type="submit" class="btn-register">立即注册</button>
+    </form>
+
+    <div class="login-link">
+        已有账户？<a href="{% url 'login' %}">立即登录</a>
+    </div>
+</div>
+
+<!-- 引入particles.js -->
+<script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
+<script>
+    // 初始化粒子效果
+    particlesJS('particles-js', {
+        "particles": {
+            "number": {
+                "value": 80,
+                "density": {
+                    "enable": true,
+                    "value_area": 800
+                }
+            },
+            "color": {
+                "value": "#ffffff"
+            },
+            "shape": {
+                "type": "circle",
+                "stroke": {
+                    "width": 0,
+                    "color": "#000000"
+                },
+                "polygon": {
+                    "nb_sides": 5
+                }
+            },
+            "opacity": {
+                "value": 0.5,
+                "random": false,
+                "anim": {
+                    "enable": false,
+                    "speed": 1,
+                    "opacity_min": 0.1,
+                    "sync": false
+                }
+            },
+            "size": {
+                "value": 3,
+                "random": true,
+                "anim": {
+                    "enable": false,
+                    "speed": 40,
+                    "size_min": 0.1,
+                    "sync": false
+                }
+            },
+            "line_linked": {
+                "enable": true,
+                "distance": 150,
+                "color": "#ffffff",
+                "opacity": 0.4,
+                "width": 1
+            },
+            "move": {
+                "enable": true,
+                "speed": 6,
+                "direction": "none",
+                "random": false,
+                "straight": false,
+                "out_mode": "out",
+                "bounce": false,
+                "attract": {
+                    "enable": false,
+                    "rotateX": 600,
+                    "rotateY": 1200
+                }
+            }
+        },
+        "interactivity": {
+            "detect_on": "canvas",
+            "events": {
+                "onhover": {
+                    "enable": true,
+                    "mode": "repulse"
+                },
+                "onclick": {
+                    "enable": true,
+                    "mode": "push"
+                },
+                "resize": true
+            },
+            "modes": {
+                "grab": {
+                    "distance": 400,
+                    "line_linked": {
+                        "opacity": 1
+                    }
+                },
+                "bubble": {
+                    "distance": 400,
+                    "size": 40,
+                    "duration": 2,
+                    "opacity": 8,
+                    "speed": 3
+                },
+                "repulse": {
+                    "distance": 200,
+                    "duration": 0.4
+                },
+                "push": {
+                    "particles_nb": 4
+                },
+                "remove": {
+                    "particles_nb": 2
+                }
+            }
+        },
+        "retina_detect": true
+    });
+</script>
+{% endblock %}
