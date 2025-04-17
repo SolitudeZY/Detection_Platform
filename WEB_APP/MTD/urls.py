@@ -22,6 +22,8 @@ urlpatterns = [
     path('get_progress/', views.get_progress, name='get_progress'),
     path('download_model/<str:dataset_name>/', views.download_model, name='download_model'),
     path('download_source/', views.download_source_code, name='download_source'),
+    path('sample_generation/', views.sample_generation, name='sample_generation'),  # 样本生成
+    path('download_samples/', views.download_samples, name='download_samples'),
 
     path('model_detection/', views.model_detection, name='model_detection'),
     path('detection_results/<int:detection_id>/', views.detection_results, name='detection_results'),
@@ -33,7 +35,6 @@ urlpatterns = [
     path('dataset_model_distribution/', views.dataset_model_distribution, name='dataset_model_distribution'),
 
     path('attack_situation_awareness/', views.attack_situation_awareness, name='attack_situation_awareness'),  # 攻击态势感知
-    path('globe/', views.globe, name='globe'),
 
     path('personal_information/', views.personal_information, name='personal_information'),  # 个人信息
     path('dataset_management/', views.dataset_management, name='dataset_management'),  # 数据集管理

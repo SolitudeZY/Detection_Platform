@@ -1,4 +1,5 @@
 import logging
+import mimetypes
 
 from django.contrib.auth import logout, get_user_model
 from django.http import HttpResponse
@@ -751,9 +752,31 @@ def download_source_code(request):
     return response
 
 
-# def results_display(request):
-#     return render(request, 'results_display.html')
+def sample_generation(request):
+    """
+    渲染样本生成页面
+    """
+    return render(request, 'sample_generation.html')
 
 
-def globe(request):
-    return render(request, 'globe.html')
+def download_samples(request):
+    """
+    下载样本文件
+    """
+    # 指定文件路径
+
+    file_path = os.path.join(settings.MEDIA_ROOT, 'source', 'samples.npz')
+
+    # 检查文件是否存在
+    if os.path.exists(file_path):
+        # 获取文件类型
+        content_type, encoding = mimetypes.guess_type(file_path)
+        if content_type is None:
+            content_type = 'application/octet-stream'
+
+        # 创建文件响应
+        response = FileResponse(open(file_path, 'rb'), content_type=content_type)
+        response['Content-Disposition'] = f'attachment; filename="samples.npz"'
+        return response
+    else:
+        return HttpResponse("文件不存在", status=404)
