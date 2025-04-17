@@ -30,6 +30,7 @@ urlpatterns = [
          name='delete_detection_record'),
 
     path('visualization/', views.visualization, name='visualization'),  # 检测结果可视化
+    path('dataset_model_distribution/', views.dataset_model_distribution, name='dataset_model_distribution'),
 
     path('attack_situation_awareness/', views.attack_situation_awareness, name='attack_situation_awareness'),  # 攻击态势感知
     path('globe/', views.globe, name='globe'),

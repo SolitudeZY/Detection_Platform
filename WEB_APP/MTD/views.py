@@ -1,10 +1,8 @@
 import logging
 
 from django.contrib.auth import logout, get_user_model
-from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
-
 from .models import ModelManagement, DetectionHistory, DatasetManagement
 from django.urls import reverse_lazy
 from django.views.generic import DeleteView
@@ -12,7 +10,11 @@ from django.core.paginator import Paginator
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.hashers import check_password
-
+from django.db.models import Count
+from django.db.models.functions import TruncMonth, TruncDay
+from django.contrib.auth.decorators import login_required
+from datetime import datetime, timedelta
+import json
 # from APP_core import settings
 
 User = get_user_model()
@@ -24,6 +26,157 @@ def test(request):
 
 
 #  **********  结果展示功能的后端代码  ***************
+@login_required
+def dataset_model_distribution(request):
+    """
+    显示数据集和模型分布的视图函数
+    """
+    # 获取数据集类型分布数据
+    dataset_distribution = []
+    dataset_types = dict(DatasetManagement.DATASET_TYPE_CHOICES)
+
+    # 统计每种类型的数据集数量
+    dataset_counts = DatasetManagement.objects.values('category').annotate(count=Count('id'))
+
+    for item in dataset_counts:
+        category = item['category']
+        count = item['count']
+        # 获取类型的显示名称
+        display_name = dataset_types.get(category, category)
+        dataset_distribution.append({
+            'name': display_name,
+            'value': count
+        })
+
+    # 获取模型类型分布数据
+    model_distribution = []
+    model_types = dict(ModelManagement.MODEL_TYPE_CHOICES)
+
+    # 统计每种类型的模型数量
+    model_counts = ModelManagement.objects.values('category').annotate(count=Count('id'))
+
+    for item in model_counts:
+        category = item['category']
+        count = item['count']
+        # 获取类型的显示名称
+        display_name = model_types.get(category, category)
+        model_distribution.append({
+            'name': display_name,
+            'value': count
+        })
+
+    # 获取数据集大小分布数据
+    dataset_size_distribution = []
+
+    # 定义数据集大小范围 - 避免使用无穷大
+    size_ranges = [
+        (0, 1000, '0-1K'),
+        (1000, 10000, '1K-10K'),
+        (10000, 100000, '10K-100K'),
+        (100000, 1000000, '100K-1M'),
+    ]
+
+    # 统计每个范围的数据集数量
+    for min_size, max_size, range_label in size_ranges:
+        count = DatasetManagement.objects.filter(size__gte=min_size, size__lt=max_size).count()
+        if count > 0:
+            dataset_size_distribution.append({
+                'range': range_label,
+                'count': count
+            })
+
+    # 单独处理最大范围
+    count = DatasetManagement.objects.filter(size__gte=1000000).count()
+    if count > 0:
+        dataset_size_distribution.append({
+            'range': '1M+',
+            'count': count
+        })
+
+    # 获取数据集上传时间分布数据
+    model_time_distribution = []
+
+    try:
+        # 获取所有数据集
+        datasets = DatasetManagement.objects.all()
+
+        # 如果没有数据集，返回空列表
+        if not datasets.exists():
+            print("No datasets found")
+            model_time_distribution = []
+        else:
+            # 获取最早和最晚的上传时间
+            earliest_date = DatasetManagement.objects.order_by('upload_time').first().upload_time
+            latest_date = DatasetManagement.objects.order_by('-upload_time').first().upload_time
+
+            print(f"Earliest date: {earliest_date}, Latest date: {latest_date}")
+
+            # 直接按天统计，不再使用TruncMonth或TruncDay
+            # 创建一个字典来存储每天的数据集数量
+            daily_counts = {}
+
+            # 遍历所有数据集，按天统计
+            for dataset in datasets:
+                # 提取日期部分（不包含时间）
+                day_str = dataset.upload_time.strftime('%Y-%m-%d')
+
+                # 更新计数
+                if day_str in daily_counts:
+                    daily_counts[day_str] += 1
+                else:
+                    daily_counts[day_str] = 1
+
+            # 确保所有日期都有数据（填充缺失的日期）
+            current_date = earliest_date.date()
+            end_date = latest_date.date()
+
+            while current_date <= end_date:
+                day_str = current_date.strftime('%Y-%m-%d')
+                if day_str not in daily_counts:
+                    daily_counts[day_str] = 0
+                current_date += timedelta(days=1)
+
+            # 将字典转换为列表，并按日期排序
+            for day_str, count in sorted(daily_counts.items()):
+                model_time_distribution.append({
+                    'period': day_str,
+                    'count': count
+                })
+
+            print(f"Dataset time distribution (daily): {json.dumps(model_time_distribution)}")
+    except Exception as e:
+        print(f"Error getting dataset time distribution: {e}")
+        # 创建一些示例数据，以便前端能够显示图表
+        # 使用2025年4月9日作为起始日期
+        start_date = datetime(2025, 4, 9)
+        for i in range(6):  # 显示6个月的数据
+            month = start_date + timedelta(days=30 * i)
+            model_time_distribution.append({
+                'period': month.strftime('%Y-%m'),
+                'count': 0  # 默认值为0
+            })
+
+    # 确保即使没有数据也返回有效的JSON
+    if not dataset_distribution:
+        dataset_distribution = []
+
+    if not model_distribution:
+        model_distribution = []
+
+    if not dataset_size_distribution:
+        dataset_size_distribution = []
+
+    if not model_time_distribution:
+        model_time_distribution = []
+
+    return render(request, 'dataset_model_distribution.html', {
+        'dataset_distribution': dataset_distribution,
+        'model_distribution': model_distribution,
+        'dataset_size_distribution': dataset_size_distribution,
+        'model_time_distribution': model_time_distribution,
+    })
+
+
 @login_required
 def visualization(request):
     # 获取所有检测记录
@@ -61,6 +214,7 @@ def visualization(request):
     return render(request, 'visualization.html', {
         'chart_data': chart_data,
     })
+
 
 @login_required
 def home(request):
@@ -355,8 +509,6 @@ def situation_awareness(request):
 
 def attack_situation_awareness(request):
     return render(request, 'attack_situation_awareness.html')
-
-
 
 
 @login_required

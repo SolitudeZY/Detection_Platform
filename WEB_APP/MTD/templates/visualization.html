@@ -15,14 +15,17 @@
                 <i class="fas fa-download"></i> 导出图表
             </button>
             <div class="dropdown ml-2">
-                <button class="btn btn-outline-info dropdown-toggle" type="button" id="chartTypeDropdown" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                    <i class="fas fa-chart-bar"></i> 图表类型
-                </button>
-                <div class="dropdown-menu" aria-labelledby="chartTypeDropdown">
-                    <a class="dropdown-item chart-type" href="#" data-type="bar">柱状图</a>
-                    <a class="dropdown-item chart-type" href="#" data-type="line">折线图</a>
-                    <a class="dropdown-item chart-type" href="#" data-type="radar">雷达图</a>
-                </div>
+                <a href="{% url 'dataset_model_distribution' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-chart-bar"></i> 查看模型及数据集分布饼状图
+                </a>
+{#                <button class="btn btn-outline-info dropdown-toggle" type="button" id="chartTypeDropdown" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">#}
+{#                    <i class="fas fa-chart-bar"></i> 查看模型及数据集分布饼状图#}
+{#                </button>#}
+{#                <div class="dropdown-menu" aria-labelledby="chartTypeDropdown">#}
+{#                    <a class="dropdown-item chart-type" href="#" data-type="bar">柱状图</a>#}
+{#                    <a class="dropdown-item chart-type" href="#" data-type="line">折线图</a>#}
+{#                    <a class="dropdown-item chart-type" href="#" data-type="radar">雷达图</a>#}
+{#                </div>#}
             </div>
         </div>
     </div>
