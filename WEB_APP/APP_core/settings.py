@@ -8,18 +8,9 @@ from decouple import config
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-ALLOWED_HOSTS = ['localhost', 'localhost:85', '127.0.0.1', '192.168.10.109',
-                 '0.0.0.0', config('SERVER', default='127.0.0.1')]
+ALLOWED_HOSTS = ['*']
 
-CSRF_TRUSTED_ORIGINS = ['http://localhost:85', 'http://127.0.0.1', 'http://110.42.214.159',
-                        'https://' + config('SERVER', default='127.0.0.1')]
-
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_RESULT_SERIALIZER = 'json'
-
+# CSRF_TRUSTED_ORIGINS = ['*']
 
 # Quick-start development settings - unsuitable for production
 MEDIA_URL = '/media/'
@@ -29,7 +20,7 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')  # 新增独立 media 目录
 SECRET_KEY = "django-insecure-mb7tp&m_-9$n32n)ouvdkv^bm+ebt-ax$a*uvww*i&^-q@bg$@"
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 # Application definition
 
