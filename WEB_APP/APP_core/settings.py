@@ -20,13 +20,13 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')  # 新增独立 media 目录
 SECRET_KEY = "django-insecure-mb7tp&m_-9$n32n)ouvdkv^bm+ebt-ax$a*uvww*i&^-q@bg$@"
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
 # Application definition
 
 INSTALLED_APPS = [
     "django.contrib.admin",
-    "django.contrib.auth",
+    "django.contrib.auth", 
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",

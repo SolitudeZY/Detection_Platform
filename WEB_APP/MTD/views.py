@@ -16,6 +16,7 @@ from django.db.models.functions import TruncMonth, TruncDay
 from django.contrib.auth.decorators import login_required
 from datetime import datetime, timedelta
 import json
+
 # from APP_core import settings
 
 User = get_user_model()
@@ -780,3 +781,13 @@ def download_samples(request):
         return response
     else:
         return HttpResponse("文件不存在", status=404)
+
+
+def fullscreen_image(request):
+    """
+    全屏查看图片的视图
+    """
+    src = request.GET.get('src', '')
+    alt = request.GET.get('alt', '框架图')
+
+    return render(request, 'fullscreen_image.html', {'src': src, 'alt': alt})

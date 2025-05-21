@@ -16,6 +16,7 @@ urlpatterns = [
          name='data_augmentation_introduction'),  # 数据增强模型介绍
     path('model_introduction/', views.model_introduction,
          name='model_introduction'),  # 模型介绍
+    path('fullscreen-image/', views.fullscreen_image, name='fullscreen_image'),  # 全屏查看图片
 
     path('data_augmentation/', views.data_augmentation, name='data_augmentation'),  # 数据增强部分urls
     path('start_training/', views.start_training, name='start_training'),
