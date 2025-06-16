@@ -240,7 +240,7 @@
     <!-- 添加标题 -->
     <div class="sidebar-title">
         <img src="{% static 'images/logo-thumb.png' %}" alt="Logo">
-        集成数据增强的恶意流量检测平台
+        基于数据增强和集成学习的网络入侵检测系统
     </div>
 
     <ul>
@@ -303,7 +303,7 @@
         <!-- 攻击态势感知 -->
         <li class="{% if request.resolver_match.url_name == 'attack_situation_awareness' %}active{% endif %}">
             <a href="{% url 'attack_situation_awareness' %}">
-                <i data-feather="shield" class="sidebar-icon"></i> 攻击地图展示
+                <i data-feather="shield" class="sidebar-icon"></i> 攻击态势感知
             </a>
         </li>
 
