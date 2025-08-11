@@ -1,8 +1,19 @@
 import logging
 import mimetypes
-
+import os
+import re  # 添加这个导入
+import uuid
+import random
+import shutil
+import json
+import ctypes
+import platform
+import subprocess
+import time
+import threading
+import signal
 from django.contrib.auth import logout, get_user_model
-from django.http import HttpResponse
+from django.http import HttpResponse, Http404, StreamingHttpResponse, FileResponse, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from .models import ModelManagement, DetectionHistory, DatasetManagement
 from django.urls import reverse_lazy
@@ -15,9 +26,8 @@ from django.db.models import Count
 from django.db.models.functions import TruncMonth, TruncDay
 from django.contrib.auth.decorators import login_required
 from datetime import datetime, timedelta
-import json
-
 # from APP_core import settings
+from django.conf import settings
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -26,7 +36,580 @@ logger = logging.getLogger(__name__)
 def test(request):
     return render(request, 'test.html')
 
+# *************** 流量捕获功能 **********************
+# 全局变量存储捕获状态
+capture_status = {
+    'is_capturing': False,
+    'capture_file': None,
+    'start_time': None,
+    'packet_count': 0,
+    'process': None
+}
 
+@login_required
+def traffic_capture_redirect(request):
+    """根据操作系统自动跳转到对应的流量捕获页面"""
+    current_os = platform.system().lower()
+    
+    if current_os == 'linux':
+        return redirect('linux_traffic:capture')
+    elif current_os == 'windows':
+        return redirect('traffic_capture')
+    else:
+        # 其他操作系统默认跳转到中转页面
+        return redirect('traffic_capture_hub')
+
+@login_required
+def traffic_capture_hub(request):
+    """流量捕获中转页面"""
+    current_os = platform.system()
+    
+    context = {
+        'current_os': current_os,
+        'os_info': {
+            'system': current_os,
+            'release': platform.release(),
+            'version': platform.version(),
+            'machine': platform.machine(),
+            'processor': platform.processor()
+        }
+    }
+    
+    return render(request, 'traffic_capture_hub.html', context)
+
+@login_required
+def traffic_capture(request):
+    """流量捕获页面"""
+    # 获取可用的网络接口
+    interfaces = get_network_interfaces()
+    
+    return render(request, 'traffic_capture.html', {
+        'capture_status': capture_status,
+        'interfaces': interfaces
+    })
+
+@login_required
+def start_capture(request):
+    """开始流量捕获"""
+    global capture_status
+    
+    print(f"收到捕获请求: {request.method}")
+    print(f"POST数据: {request.POST}")
+    
+    if request.method == 'POST':
+        if capture_status['is_capturing']:
+            print("已有捕获任务在进行中")
+            return JsonResponse({
+                'status': 'error',
+                'message': '已有捕获任务在进行中'
+            })
+        
+        try:
+            # 创建捕获文件目录
+            capture_dir = os.path.join(settings.MEDIA_ROOT, 'captures')
+            os.makedirs(capture_dir, exist_ok=True)
+            print(f"捕获目录: {capture_dir}")
+            
+            # 生成PCAP文件名
+            timestamp = int(time.time())
+            filename = f'traffic_capture_{timestamp}.pcap'
+            filepath = os.path.join(capture_dir, filename)
+            print(f"捕获文件路径: {filepath}")
+            
+            # 获取参数
+            interface = request.POST.get('interface', '1')  # 默认使用第一个接口
+            duration = int(request.POST.get('duration', 10))  # 默认10秒
+            
+            # 在Windows上，如果接口是'any'，改为使用第一个可用接口
+            if interface == 'any' and platform.system().lower() == 'windows':
+                available_interfaces = get_network_interfaces()
+                if available_interfaces:
+                    # 提取接口编号（如果是完整格式）
+                    first_interface = available_interfaces[0]
+                    if '. ' in first_interface:
+                        interface = first_interface.split('.')[0]
+                    else:
+                        interface = '1'
+                else:
+                    interface = '1'
+                print(f"Windows系统，将'any'接口改为: {interface}")
+            
+            print(f"接口: {interface}, 持续时间: {duration}")
+            
+            # 检查捕获工具是否可用
+            capture_tool = get_available_capture_tool()
+            print(f"可用的捕获工具: {capture_tool}")
+            
+            if not capture_tool:
+                error_msg = '''未找到可用的流量捕获工具。请按以下步骤解决：
+
+1. 安装 Wireshark：
+   - 下载：https://www.wireshark.org/download.html
+   - 安装时勾选"Add to PATH"
+   - 重启Django服务器
+
+2. 或者以管理员身份运行Django服务器'''
+                print(error_msg)
+                return JsonResponse({
+                    'status': 'error',
+                    'message': error_msg
+                })
+            
+            # 更新状态
+            capture_status.update({
+                'is_capturing': True,
+                'capture_file': filename,
+                'start_time': time.time(),
+                'packet_count': 0,
+                'process': None
+            })
+            print(f"更新捕获状态: {capture_status}")
+            
+            # 启动捕获线程
+            capture_thread = threading.Thread(
+                target=run_capture,
+                args=(filepath, interface, duration, capture_tool)
+            )
+            capture_thread.daemon = True
+            capture_thread.start()
+            print("捕获线程已启动")
+            
+            response_data = {
+                'status': 'success',
+                'message': f'流量捕获已开始（使用{capture_tool}工具，接口{interface}）',
+                'filename': filename
+            }
+            print(f"返回响应: {response_data}")
+            return JsonResponse(response_data)
+            
+        except Exception as e:
+            capture_status['is_capturing'] = False
+            error_msg = f'启动捕获失败: {str(e)}'
+            print(f"捕获启动异常: {error_msg}")
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({
+                'status': 'error',
+                'message': error_msg
+            })
+    
+    print("无效请求方法")
+    return JsonResponse({'status': 'error', 'message': '无效请求'})
+
+@login_required
+def stop_capture(request):
+    """停止流量捕获"""
+    global capture_status
+    
+    if request.method == 'POST':
+        if not capture_status['is_capturing']:
+            return JsonResponse({
+                'status': 'error',
+                'message': '当前没有进行中的捕获任务'
+            })
+        
+        try:
+            # 停止捕获进程
+            if capture_status['process']:
+                try:
+                    capture_status['process'].terminate()
+                    capture_status['process'].wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    capture_status['process'].kill()
+            
+            capture_status['is_capturing'] = False
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': '流量捕获已停止'
+            })
+            
+        except Exception as e:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'停止捕获失败: {str(e)}'
+            })
+    
+    return JsonResponse({'status': 'error', 'message': '无效请求'})
+
+@login_required
+def capture_status_api(request):
+    """获取捕获状态API"""
+    global capture_status
+    
+    status_data = capture_status.copy()
+    if status_data['start_time']:
+        status_data['duration'] = int(time.time() - status_data['start_time'])
+    
+    # 移除process对象，避免JSON序列化错误
+    if 'process' in status_data:
+        del status_data['process']
+    
+    return JsonResponse(status_data)
+
+@login_required
+def download_capture(request, filename):
+    """下载捕获的流量包文件"""
+    try:
+        # 构建文件路径
+        file_path = os.path.join(settings.MEDIA_ROOT, 'captures', filename)
+        print(f"尝试下载文件: {file_path}")
+        print(f"MEDIA_ROOT: {settings.MEDIA_ROOT}")
+        print(f"当前工作目录: {os.getcwd()}")
+        
+        # 检查文件是否存在
+        if not os.path.exists(file_path):
+            print(f"文件不存在: {file_path}")
+            # 尝试在其他可能的位置查找文件
+            alternative_paths = [
+                os.path.join(os.getcwd(), 'media', 'captures', filename),
+                os.path.join('/tmp', filename),
+                os.path.join(settings.BASE_DIR, 'media', 'captures', filename),
+            ]
+            
+            for alt_path in alternative_paths:
+                print(f"尝试备用路径: {alt_path}")
+                if os.path.exists(alt_path):
+                    file_path = alt_path
+                    print(f"在备用路径找到文件: {file_path}")
+                    break
+            else:
+                # 列出captures目录的内容
+                captures_dir = os.path.join(settings.MEDIA_ROOT, 'captures')
+                if os.path.exists(captures_dir):
+                    files = os.listdir(captures_dir)
+                    print(f"captures目录内容: {files}")
+                else:
+                    print(f"captures目录不存在: {captures_dir}")
+                
+                raise Http404(f"文件不存在: {filename}")
+        
+        # 检查文件大小
+        file_size = os.path.getsize(file_path)
+        print(f"文件大小: {file_size} 字节")
+        
+        if file_size == 0:
+            raise Http404("文件为空")
+        
+        try:
+            response = FileResponse(
+                open(file_path, 'rb'),
+                as_attachment=True,
+                filename=filename
+            )
+            response['Content-Type'] = 'application/vnd.tcpdump.pcap'
+            response['Content-Length'] = file_size
+            print(f"成功创建下载响应: {filename}")
+            return response
+        except Exception as e:
+            print(f"创建文件响应失败: {e}")
+            raise Http404(f"文件读取失败: {str(e)}")
+        
+    except Http404:
+        raise
+    except Exception as e:
+        print(f"下载异常: {e}")
+        import traceback
+        traceback.print_exc()
+        raise Http404(f"下载失败: {str(e)}")
+
+def get_available_capture_tool():
+    """检查可用的流量捕获工具"""
+    print("开始检查可用的捕获工具...")
+    
+    # 首先尝试tshark
+    try:
+        print("尝试检查 tshark...")
+        result = subprocess.run(
+            ['tshark', '--version'],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            encoding='utf-8',
+            errors='ignore'
+        )
+        if result.returncode == 0:
+            print("tshark 可用")
+            return 'tshark'
+        else:
+            print(f"tshark 返回码: {result.returncode}")
+    except FileNotFoundError:
+        print("tshark 未找到")
+    except Exception as e:
+        print(f"tshark 检查失败: {e}")
+    
+    # 尝试tcpdump (Linux)
+    try:
+        print("尝试检查 tcpdump...")
+        result = subprocess.run(
+            ['tcpdump', '--version'],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            encoding='utf-8',
+            errors='ignore'
+        )
+        if result.returncode == 0:
+            print("tcpdump 可用")
+            return 'tcpdump'
+        else:
+            print(f"tcpdump 返回码: {result.returncode}")
+    except FileNotFoundError:
+        print("tcpdump 未找到")
+    except Exception as e:
+        print(f"tcpdump 检查失败: {e}")
+    
+    # 尝试Windows netsh (作为备选)
+    if platform.system().lower() == 'windows':
+        try:
+            print("尝试检查 netsh...")
+            result = subprocess.run(
+                ['netsh', 'trace', 'show', 'status'],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                encoding='utf-8',
+                errors='ignore'
+            )
+            if result.returncode == 0:
+                print("netsh 可用")
+                return 'netsh'
+            else:
+                print(f"netsh 返回码: {result.returncode}")
+        except FileNotFoundError:
+            print("netsh 未找到")
+        except Exception as e:
+            print(f"netsh 检查失败: {e}")
+    
+    print("未找到可用的捕获工具")
+    return None
+
+def get_network_interfaces():
+    """获取可用的网络接口列表"""
+    interfaces = []
+    system = platform.system().lower()
+    
+    try:
+        if system == 'windows':
+            # Windows系统使用tshark获取接口
+            result = subprocess.run(
+                ['tshark', '-D'],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                encoding='utf-8',
+                errors='ignore'
+            )
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if line.strip() and '. ' in line:
+                        # 格式: "1. \Device\NPF_{GUID} (网络适配器名称)"
+                        interface_info = line.strip()
+                        print(f"发现网络接口: {interface_info}")
+                        
+                        # 解析接口信息
+                        parts = interface_info.split(' ', 1)
+                        if len(parts) >= 2:
+                            interface_num = parts[0].rstrip('.')
+                            remaining = parts[1]
+                            
+                            # 提取描述（括号内的内容）
+                            if '(' in remaining and ')' in remaining:
+                                desc_start = remaining.rfind('(')
+                                desc_end = remaining.rfind(')')
+                                if desc_start < desc_end:
+                                    description = remaining[desc_start+1:desc_end]
+                                else:
+                                    description = f"接口 {interface_num}"
+                            else:
+                                description = f"接口 {interface_num}"
+                            
+                            interfaces.append({
+                                'name': interface_num,
+                                'description': f"{interface_num}. {description}"
+                            })
+        
+        elif system == 'linux':
+            # Linux系统使用ip命令
+            result = subprocess.run(
+                ['ip', 'link', 'show'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if ': ' in line and 'state UP' in line:
+                        interface = line.split(': ')[1].split('@')[0]
+                        interfaces.append({
+                            'name': interface,
+                            'description': f"{interface} (Linux网络接口)"
+                        })
+        
+        # 如果没有找到接口，添加默认选项
+        if not interfaces:
+            if system == 'windows':
+                interfaces = [
+                    {'name': '1', 'description': '1. 默认接口'},
+                    {'name': '2', 'description': '2. 备用接口'},
+                    {'name': 'any', 'description': 'any. 所有接口'}
+                ]
+            else:
+                interfaces = [
+                    {'name': 'eth0', 'description': 'eth0 (以太网)'},
+                    {'name': 'wlan0', 'description': 'wlan0 (无线网络)'},
+                    {'name': 'any', 'description': 'any (所有接口)'}
+                ]
+            print(f"未找到接口，使用默认: {interfaces}")
+            
+    except Exception as e:
+        print(f"获取网络接口失败: {e}")
+        if system == 'windows':
+            interfaces = [
+                {'name': '1', 'description': '1. 默认接口'},
+                {'name': '2', 'description': '2. 备用接口'},
+                {'name': 'any', 'description': 'any. 所有接口'}
+            ]
+        else:
+            interfaces = [
+                {'name': 'eth0', 'description': 'eth0 (以太网)'},
+                {'name': 'wlan0', 'description': 'wlan0 (无线网络)'},
+                {'name': 'any', 'description': 'any (所有接口)'}
+            ]
+    
+    print(f"可用接口列表: {interfaces}")
+    return interfaces
+
+def run_capture(filepath, interface, duration, capture_tool):
+    """运行流量捕获的后台函数"""
+    global capture_status
+    
+    try:
+        print(f"开始构建捕获命令，工具: {capture_tool}")
+        
+        # 构建捕获命令
+        if capture_tool == 'tshark':
+            cmd = [
+                'tshark',
+                '-i', interface,
+                '-a', f'duration:{duration}',
+                '-w', filepath,
+                '-q'  # 安静模式
+            ]
+        elif capture_tool == 'tcpdump':
+            cmd = [
+                'tcpdump',
+                '-i', interface,
+                '-w', filepath,
+                '-G', str(duration),
+                '-W', '1'  # 只写一个文件
+            ]
+        elif capture_tool == 'netsh':
+            # Windows netsh 命令
+            etl_filepath = filepath.replace('.pcap', '.etl')
+            cmd = [
+                'netsh', 'trace', 'start',
+                'capture=yes',
+                f'tracefile={etl_filepath}',
+                'provider=Microsoft-Windows-TCPIP'
+            ]
+        else:
+            raise Exception(f"不支持的捕获工具: {capture_tool}")
+        
+        print(f"执行命令: {' '.join(cmd)}")
+        
+        # 启动捕获进程 - 修复编码问题
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding='utf-8',  # 明确指定UTF-8编码
+            errors='ignore'    # 忽略编码错误
+        )
+        
+        capture_status['process'] = process
+        print(f"捕获进程已启动，PID: {process.pid}")
+        
+        # 启动进程后，等待1秒检查是否立即退出
+        time.sleep(1)
+        if process.poll() is not None:
+            capture_status.update({
+                'is_capturing': False,
+                'packet_count': 0
+            })
+            return
+        
+        # 添加这段代码：确认进程正常运行后设置状态
+        capture_status.update({
+            'is_capturing': True,
+            'packet_count': 0
+        })
+        
+        if capture_tool == 'netsh':
+            # netsh 需要手动停止
+            time.sleep(duration)
+            if capture_status['is_capturing']:
+                stop_cmd = ['netsh', 'trace', 'stop']
+                subprocess.run(stop_cmd, capture_output=True, encoding='utf-8', errors='ignore')
+                print("netsh 捕获已停止")
+        else:
+            # 监控捕获进程
+            start_time = time.time()
+            while time.time() - start_time < duration and capture_status['is_capturing']:
+                # 检查进程是否还在运行
+                if process.poll() is not None:
+                    break
+                
+                # 更新包计数（基于文件大小估算）
+                if os.path.exists(filepath):
+                    try:
+                        file_size = os.path.getsize(filepath)
+                        # 粗略估算包数量（假设平均每包1KB）
+                        capture_status['packet_count'] = file_size // 1024
+                    except OSError:
+                        pass  # 文件可能正在被写入
+                
+                time.sleep(1)
+            
+            # 如果捕获仍在进行，终止进程
+            if process.poll() is None:
+                try:
+                    process.terminate()
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()  # 强制终止
+        
+        # 获取进程输出 - 使用安全的方式
+        try:
+            stdout, stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+        except UnicodeDecodeError:
+            stdout, stderr = "", "编码错误，但捕获可能成功"
+        
+        print(f"捕获完成，stdout: {stdout}")
+        print(f"捕获完成，stderr: {stderr}")
+        
+        # 检查文件是否生成
+        if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+            file_size = os.path.getsize(filepath)
+            print(f"流量捕获成功，文件保存至: {filepath}")
+            print(f"捕获文件大小: {file_size} 字节")
+        elif process.returncode == 0:
+            print(f"捕获进程正常结束，但文件可能为空: {filepath}")
+        else:
+            print(f"捕获过程可能出现问题，返回码: {process.returncode}")
+            
+    except Exception as e:
+        print(f"捕获错误: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        capture_status['is_capturing'] = False
+        capture_status['process'] = None
+        print("捕获状态已重置")
 #  **********  结果展示功能的后端代码  ***************
 @login_required
 def dataset_model_distribution(request):
@@ -304,14 +887,14 @@ def model_detail(request, model_id):
     return render(request, 'model_detail.html', {'model': model})
 
 
-@login_required
-def malicious_model_introduction(request):
-    return render(request, 'malicious_model_introduction.html')
+# @login_required
+# def malicious_model_introduction(request):
+#     return render(request, 'malicious_model_introduction.html')
 
 
-@login_required
-def data_augmentation_introduction(request):
-    return render(request, 'data_augmentation_introduction.html')
+# @login_required
+# def data_augmentation_introduction(request):
+#     return render(request, 'data_augmentation_introduction.html')
 
 
 def data_augmentation(request):
@@ -619,27 +1202,59 @@ def dataset_management(request):
             except DatasetManagement.DoesNotExist:
                 return JsonResponse({'status': 'error', 'message': '数据集不存在'})
 
-        # 原有文件上传逻辑保持不变
+        # 修改文件上传逻辑，添加自动计算数据量功能
         else:
             form = request.POST
             files = request.FILES
             name = form.get('name')
             category = form.get('category')
             data_file = files.get('data_file')
-            size = form.get('size')
+            size = form.get('size')  # 用户输入的数据量（可选）
 
-            if not all([name, category, data_file, size]):
+            if not all([name, category, data_file]):
                 return JsonResponse({'status': 'error', 'message': '必填字段不能为空'})
 
             try:
+                # 根据文件大小自动计算数据量
+                file_size_bytes = data_file.size  # 文件大小（字节）
+                
+                # 如果用户没有输入数据量，则根据文件大小自动计算
+                if not size or size == '':
+                    # 根据文件类型和大小估算数据量
+                    if category == 'CSV':
+                        # CSV文件：假设每行平均100字节
+                        estimated_size = max(1, file_size_bytes // 100)
+                    elif category in ['GRAY', 'RGB']:
+                        # 图像文件：假设每张图片平均1KB
+                        estimated_size = max(1, file_size_bytes // (1 * 1024))
+                    elif category == 'PCAP':
+                        # PCAP文件：假设每个数据包平均1KB
+                        estimated_size = max(1, file_size_bytes // 1024)
+                    else:
+                        # 其他类型：假设每条记录平均200字节
+                        estimated_size = max(1, file_size_bytes // 200)
+                    
+                    calculated_size = estimated_size
+                else:
+                    # 使用用户输入的数据量
+                    calculated_size = int(size)
+
                 dataset = DatasetManagement(
                     name=name,
                     category=category,
                     data_file=data_file,
-                    size=size
+                    size=calculated_size
                 )
                 dataset.save()
-                return JsonResponse({'status': 'success', 'message': '数据集上传成功'})
+                
+                # 返回成功信息，包含计算出的数据量
+                message = f'数据集上传成功！文件大小：{file_size_bytes / (1024*1024):.2f}MB，估算数据量：{calculated_size}条'
+                return JsonResponse({
+                    'status': 'success', 
+                    'message': message,
+                    'file_size': file_size_bytes,
+                    'calculated_size': calculated_size
+                })
             except Exception as e:
                 return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -655,13 +1270,8 @@ def dataset_management(request):
 #           ************** 数据增强部分后端代码 ******************
 from django.http import JsonResponse, FileResponse
 from django.views.decorators.csrf import csrf_exempt
-import os
-import shutil
-import random
-import uuid
 from django.conf import settings
 from django.http import StreamingHttpResponse
-
 
 @csrf_exempt
 def start_training(request):
@@ -791,3 +1401,121 @@ def fullscreen_image(request):
     alt = request.GET.get('alt', '框架图')
 
     return render(request, 'fullscreen_image.html', {'src': src, 'alt': alt})
+
+# 为了向后兼容，保持原有的视图函数不变
+@login_required
+def malicious_model_introduction(request):
+    return render(request, 'malicious_model_introduction.html')
+
+@login_required
+def data_augmentation_introduction(request):
+    return render(request, 'data_augmentation_introduction.html')
+
+# 在文件末尾添加以下函数
+
+@login_required
+def edit_model(request, model_id):
+    """编辑模型信息"""
+    model = get_object_or_404(ModelManagement, pk=model_id)
+    
+    if request.method == 'POST':
+        # 获取表单数据
+        name = request.POST.get('name')
+        category = request.POST.get('category')
+        description = request.POST.get('description')
+        model_file = request.FILES.get('model_file')
+        
+        # 验证必填字段
+        if not all([name, category]):
+            messages.error(request, '模型名称和类别为必填项')
+            return render(request, 'edit_model.html', {
+                'model': model,
+                'MODEL_TYPE_CHOICES': ModelManagement.MODEL_TYPE_CHOICES
+            })
+        
+        # 检查模型名称是否重复（排除当前模型）
+        if ModelManagement.objects.filter(name=name).exclude(pk=model_id).exists():
+            messages.error(request, '该模型名称已存在')
+            return render(request, 'edit_model.html', {
+                'model': model,
+                'MODEL_TYPE_CHOICES': ModelManagement.MODEL_TYPE_CHOICES
+            })
+        
+        # 更新模型信息
+        model.name = name
+        model.category = category
+        model.description = description
+        
+        # 如果上传了新文件，则更新文件
+        if model_file:
+            model.model_file = model_file
+        
+        model.save()
+        messages.success(request, '模型信息已更新')
+        return redirect('model_management')
+    
+    # GET请求，显示编辑表单
+    return render(request, 'edit_model.html', {
+        'model': model,
+        'MODEL_TYPE_CHOICES': ModelManagement.MODEL_TYPE_CHOICES
+    })
+
+
+@login_required
+def edit_dataset(request, dataset_id):
+    """编辑数据集信息"""
+    dataset = get_object_or_404(DatasetManagement, pk=dataset_id)
+    
+    if request.method == 'POST':
+        # 获取表单数据
+        name = request.POST.get('name')
+        category = request.POST.get('category')
+        size = request.POST.get('size')
+        data_file = request.FILES.get('data_file')
+        
+        # 验证必填字段
+        if not all([name, category, size]):
+            messages.error(request, '数据集名称、类别和数据量为必填项')
+            return render(request, 'edit_dataset.html', {
+                'dataset': dataset,
+                'DATASET_TYPE_CHOICES': DatasetManagement.DATASET_TYPE_CHOICES
+            })
+        
+        # 验证数据量为正整数
+        try:
+            size = int(size)
+            if size <= 0:
+                raise ValueError
+        except ValueError:
+            messages.error(request, '数据量必须为正整数')
+            return render(request, 'edit_dataset.html', {
+                'dataset': dataset,
+                'DATASET_TYPE_CHOICES': DatasetManagement.DATASET_TYPE_CHOICES
+            })
+        
+        # 检查数据集名称是否重复（排除当前数据集）
+        if DatasetManagement.objects.filter(name=name).exclude(pk=dataset_id).exists():
+            messages.error(request, '该数据集名称已存在')
+            return render(request, 'edit_dataset.html', {
+                'dataset': dataset,
+                'DATASET_TYPE_CHOICES': DatasetManagement.DATASET_TYPE_CHOICES
+            })
+        
+        # 更新数据集信息
+        dataset.name = name
+        dataset.category = category
+        dataset.size = size
+        
+        # 如果上传了新文件，则更新文件
+        if data_file:
+            dataset.data_file = data_file
+        
+        dataset.save()
+        messages.success(request, '数据集信息已更新')
+        return redirect('dataset_management')
+    
+    # GET请求，显示编辑表单
+    return render(request, 'edit_dataset.html', {
+        'dataset': dataset,
+        'DATASET_TYPE_CHOICES': DatasetManagement.DATASET_TYPE_CHOICES
+    })
