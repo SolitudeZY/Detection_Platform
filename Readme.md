@@ -17,6 +17,7 @@ python .\WEB_APP\manage.py runserver
 ```bash
 python manage.py runserver
 ```
+--另外，值得说明的是：本作品的完整功能依赖一些别的文件，只需要新建一个同名的文件即可，基本都在WEB_APP/media 文件夹下，需要额外新建一个ema_0.9999_017000.pt放在/media/source文件夹中,
 
 ## 2. 运行测试
 ```bash
