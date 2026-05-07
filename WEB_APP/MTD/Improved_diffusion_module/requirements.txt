@@ -6,6 +6,6 @@ tqdm
 pillow
 setuptools
 matplotlib==3.3.4
-scikit-learn==1.0.2
+scikit-learn
 prettytable==3.10.2
 mpi4py==4.0.3
